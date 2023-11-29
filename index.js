@@ -148,6 +148,44 @@ app.patch('/order/admin/:id', async (req, res) => {
     res.send(result);
   });
 
+// app.patch('/order/deliveryMan/:id', async (req, res) => {
+//     const id = req.params.id;
+//     const filter = { _id: new ObjectId(id) };
+//     const result = await orderCollection.updateOne(
+//         { filter , deliveryMan: { $exists: true } },
+//     {
+//       $unset: { deliveryMan: '' },
+//       $set: { status: 'Cancelled' }
+//     });
+  
+//     res.send(result);
+//   });
+
+    app.patch('/order/deliveryMan/:orderId', async (req, res) => {
+        const orderId = req.params.orderId;
+        const filter = {_id: new ObjectId(orderId) };
+        const updatedDoc = {
+          $set: {
+            deliveryMan: '',
+            status: 'Cancelled' 
+          }
+        }
+        const result = await orderCollection.findOneAndUpdate(filter, updatedDoc);
+        res.send(result);
+    })
+    app.patch('/order/delivered/:orderId', async (req, res) => {
+        const orderId = req.params.orderId;
+        const filter = {_id: new ObjectId(orderId) };
+        const updatedDoc = {
+          $set: {
+            
+            status: 'Delivered' 
+          }
+        }
+        const result = await orderCollection.findOneAndUpdate(filter, updatedDoc);
+        res.send(result);
+    })
+
   
 
 // Add a new route to handle the assignment
@@ -335,12 +373,14 @@ app.patch('/order/admin/:id', async (req, res) => {
     //     $match: { email: userEmail } // Match the user based on the provided email
     //   },const userEmail = req.params.email;
 
-      app.get('/delivery-stats', async (req, res) => {
+      app.get('/delivery-stats/:email', async (req, res) => {
         
-      
+        const userEmail = req.params.email;
         // Perform an aggregation to match orders based on the deliveryMan field
         const result = await usersCollection.aggregate([
-            
+            {
+                    $match: { email: userEmail } 
+                  },
               {
                 $lookup: {
                   from: 'order',
@@ -363,13 +403,16 @@ app.patch('/order/admin/:id', async (req, res) => {
               {
                 $project: {
                     _id: 0,
+                    orderIds: '$userOrders._id',
                   email: '$userOrders.deliveryMan',
-                  username: '$userOrders.name',
-                  receiverName: '$userOrders.receiversNumber',
-                  phoneNumber: '$userOrders.number',
+                  bookUsername: '$userOrders.name',
+                  receiverName: '$userOrders.receiverName',
+                  bookPhoneNumber: '$userOrders.number',
                   requestedDeliveryDate: '$userOrders.date',
-                  receiversNumber: '$userOrders.receiverName',
-                  reciverAddress: '$userOrders.parcelAdress'
+                  receiversNumber: '$userOrders.receiversNumber',
+                  reciverAddress: '$userOrders.parcelAdress',
+                  status: '$userOrders.status',
+
 
                 }
               }
