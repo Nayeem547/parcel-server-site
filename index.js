@@ -45,6 +45,24 @@ async function run() {
     //     next();
     //   }
 
+
+    app.post('/users', async(req, res) => {
+        const user = req.body;
+  
+        const query = {email:  user.email};
+        const existingUser = await usersCollection.findOne(query);
+        if(existingUser){
+          return res.send({ message: 'user already exist' , insertedId: null })
+        }
+        const result = await usersCollection.insertOne(user);
+        res.send(result);
+      })
+
+      app.get('/users',  async(req, res) => {
+        const result = await usersCollection.find().toArray();
+        res.send(result);
+      })
+
       app.get('/users/admin/:email',   async(req, res) => {
         const email = req.params.email;
         if(email !== req.decoded.email ) {
@@ -75,10 +93,68 @@ async function run() {
 
       app.get('/delivery-men', async (req, res) => {
         
-          const deliveryMen = await usersCollection.find({ role: 'deliveryMan' }).toArray();
-          res.send(deliveryMen);
+          const result = await usersCollection.find({ role: 'deliveryMan' }).toArray();
+          res.send(result);
         
       });
+
+      // Add a new route to handle the assignment
+// app.patch('/order/:id', async (req, res) => {
+//     try {
+//         const id = req.params.id;
+//         const filter = {_id: new ObjectId(id)};
+//       const { deliveryManEmail } = req.body;
+  
+//       // Check if the order exists
+//       const order = await orderCollection.findOne({ _id: id });
+//       if (!order) {
+//         return res.status(404).json({ error: 'Order not found' });
+//       }
+  
+//       // Update the order with the assigned delivery man and set status to 'On The Way'
+//       const updatedOrder = await orderCollection.findOneAndUpdate(
+//         { _id: id },
+//         {
+//           $set: {
+//             deliveryManEmail,
+//             status: 'On The Way',
+//           },
+//         },
+//         { returnDocument: 'after' } // Return the updated document
+//       );
+  
+//       res.json(updatedOrder.value);
+//     } catch (error) {
+//       console.error('Error assigning delivery man:', error);
+//       res.status(500).json({ error: 'Internal Server Error' });
+//     }
+//   });
+
+
+app.patch('/order/admin/:id', async (req, res) => {
+    const id = req.params.id;
+    const filter = { _id: new ObjectId(id) };
+    const { deliveryMan } = req.body;
+  
+    const updatedDoc = {
+      $set: {
+        deliveryMan,
+        status: 'On-The-Way',
+      },
+    };
+  
+    const result = await orderCollection.findOneAndUpdate(filter, updatedDoc);
+  
+    res.send(result);
+  });
+
+  
+
+// Add a new route to handle the assignment
+
+  
+  
+  
 
     //   app.get('/users/admin/:email',   async(req, res) => {
     //     const email = req.params.email;
@@ -161,22 +237,7 @@ async function run() {
 
      
 
-    app.post('/users', async(req, res) => {
-        const user = req.body;
-  
-        const query = {email:  user.email};
-        const existingUser = await usersCollection.findOne(query);
-        if(existingUser){
-          return res.send({ message: 'user already exist' , insertedId: null })
-        }
-        const result = await usersCollection.insertOne(user);
-        res.send(result);
-      })
-
-      app.get('/users',  async(req, res) => {
-        const result = await usersCollection.find().toArray();
-        res.send(result);
-      })
+ 
 
     //   app.get('/users-stats', async(req, res) => {
     //     const result = await usersCollection.aggregate([
@@ -236,7 +297,7 @@ async function run() {
           {
             $lookup: {
               from: 'users',
-              localField: 'userOrders.email',
+              localField: 'email',
               foreignField: 'email',
               as: 'userData',
             },
@@ -246,9 +307,9 @@ async function run() {
           },
           {
             $group: {
-              _id: '$userOrders.email',
+              _id: '$userData.email',
               phoneNumber: { $first: '$userOrders.number' },
-              userName: { $first: '$userOrders.name' },
+              userName: { $first: '$userData.name' },
               role: { $first: '$userData.role' },
               totalQuantity: { $sum: 1 },
               totalRevenue: { $sum: '$userOrders.price' },
@@ -269,6 +330,121 @@ async function run() {
       
         res.send(result);
       });
+
+    //   {
+    //     $match: { email: userEmail } // Match the user based on the provided email
+    //   },const userEmail = req.params.email;
+
+      app.get('/delivery-stats', async (req, res) => {
+        
+      
+        // Perform an aggregation to match orders based on the deliveryMan field
+        const result = await usersCollection.aggregate([
+            
+              {
+                $lookup: {
+                  from: 'order',
+                  localField: 'email',
+                  foreignField: 'deliveryMan', // Match orders where deliveryMan field equals user's email
+                  as: 'userOrders'
+                }
+              },
+              {
+                $unwind: '$userOrders' // Unwind the array created by $lookup
+              },
+            //   {
+            //     $group: {
+            //       _id: '$userOrders.deliveryMan',
+            //       receiversNumber:  '$userOrders.receiversNumber' ,
+            //       receiverName:  '$userOrders.receiverName' ,
+                  
+            //     },
+            //   },
+              {
+                $project: {
+                    _id: 0,
+                  email: '$userOrders.deliveryMan',
+                  username: '$userOrders.name',
+                  receiverName: '$userOrders.receiversNumber',
+                  phoneNumber: '$userOrders.number',
+                  requestedDeliveryDate: '$userOrders.date',
+                  receiversNumber: '$userOrders.receiverName',
+                  reciverAddress: '$userOrders.parcelAdress'
+
+                }
+              }
+        ]).toArray();
+      
+        res.json(result);
+      });
+
+
+    // app.get('/users-stats', async (req, res) => {
+    //     const result = await usersCollection.aggregate([
+    //         {
+    //             $lookup: {
+    //               from: 'order',
+    //               localField: 'usersName',
+    //               foreignField: 'usersName',
+    //               as: 'orderData',
+    //             },
+    //           },
+    //           {
+    //             $unwind: { path: '$orderData', preserveNullAndEmptyArrays: true },
+    //           },
+    //           {
+    //             $group: {
+    //               _id: '$usersName',
+    //               totalQuantity: { $sum: { $ifNull: ['$orderData.quantity', 0] } },
+    //               totalRevenue: { $sum: { $ifNull: ['$orderData.price', 0] } },
+    //               uniqueRecipes: { $addToSet: '$orderData.recipe' },
+    //               userEmail: { $first: '$email' }, // To include the email field
+    //             },
+    //           },
+    //           {
+    //             $project: {
+    //               _id: 0,
+    //               usersName: '$_id',
+    //               userEmail: 1,
+    //               totalQuantity: 1,
+    //               totalRevenue: 1,
+    //               uniqueRecipes: 1,
+    //             },
+    //           },
+    //     ]).toArray();
+      
+    //     res.send(result);
+    //   });
+      
+
+    // app.get('/users-stats', async (req, res) => {
+    //     const result = await usersCollection.aggregate([
+    //       {
+    //         $lookup: {
+    //           from: 'order',
+    //           localField: 'email',
+    //           foreignField: 'email',
+    //           as: 'userOrders',
+    //         },
+    //       },
+          
+    //       {
+    //         $project: {
+    //           _id: 0,
+    //           userName: 1,
+    //           email: 1,
+    //           phoneNumber: { $ifnull: [{$arrayElemAt: ["$userOrders.number", 0]}, "no data"]},
+    //           role: { $ifnull: [{$arrayElemAt: ["$userOrders.role", 0]}, "no data"]},
+    //           quantity: { $ifnull: [{$arrayElemAt: ["$userOrders.number", 0]}, "no data"]},
+    //           revenue: { $ifnull: [{$arrayElemAt: ["$userOrders.price", 0]}, "no data"]},
+    //         },
+    //       },
+    //     ]).toArray();
+      
+    //     res.send(result);
+    //   });
+      
+      
       
 
       app.delete('/order/:id',   async (req, res) => {
@@ -290,9 +466,9 @@ async function run() {
 run().catch(console.dir);
 
 app.get('/', (req, res) => {
-    res.send('bistro is sitting')
+    res.send('parcel is booking')
 } )
 
 app.listen(port, () => {
-    console.log(`bistro is setting on port ${port}`)
+    console.log(`parcel is setting on port ${port}`)
 })
