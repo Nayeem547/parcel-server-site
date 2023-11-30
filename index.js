@@ -2,7 +2,7 @@
 const express = require('express');
 const app = express();
 const cors = require('cors');
-// const jwt = require('jsonwebtoken');
+const jwt = require('jsonwebtoken');
 
 
 
@@ -34,16 +34,79 @@ async function run() {
     const usersCollection = client.db("parcelDB").collection("users");
     const orderCollection = client.db("parcelDB").collection("order");
 
-    // const verifyAdmin = async (req, res, next) => {
+    app.post('/jwt', async(req, res) => {
+        const user = req.body;
+          const token = jwt.sign(user, process.env.ACCESS_TOKEN_SECRET, {expiresIn: '1h'})
+          res.send({token});
+        })
+
+
+    const verifyToken = (req, res,next) => {
+        // console.log('inside verify token', req.headers );
+        if(!req.headers.authorization){
+          return res.status(401).send({ message: 'forbidden access'});
+        };
+        const token = req.headers.authorization.split(' ')[1]
+        jwt.verify(token, process.env.ACCESS_TOKEN_SECRET, (error, decoded) => {
+          if(error){
+            return res.status(401).send({message: 'forbidden acces'})
+          }
+          req.decoded = decoded;
+          next();
+        } )
+       
+      } 
+
+    const verifyAdmin = async (req, res, next) => {
+        const email = req.decoded.email;
+        const query = {email: email };
+        const user = await usersCollection.findOne(query);
+        const isAdmin =  user?.role === 'admin';
+        if(!isAdmin){
+          return res.status(403).send({message: 'forbidden-access'});
+        }
+        next();
+      }
+
+    // const verifyDelivery = async (req, res, next) => {
     //     const email = req.decoded.email;
     //     const query = {email: email };
     //     const user = await usersCollection.findOne(query);
-    //     const isAdmin =  user?.role === 'admin';
-    //     if(!isAdmin){
+    //     const isDeliveryMan =  user?.role === 'deliveryMan';
+    //     if(!isDeliveryMan){
     //       return res.status(403).send({message: 'forbidden-access'});
     //     }
     //     next();
     //   }
+
+
+      app.get('/users/admin/:email', verifyToken, verifyAdmin,   async(req, res) => {
+        const email = req.params.email;
+        if(email !== req.decoded.email ) {
+         return res.status(403).send({message: "uinauthorized access"})
+        }
+        const query = {email : email};
+        const user = await usersCollection.findOne(query);
+        let admin = false; 
+        if(user){
+          admin = user?.role === 'admin';
+        } 
+        res.send({admin});
+      })
+
+    //   app.get('/users/deliveryMan/:email', verifyToken, verifyDelivery,    async(req, res) => {
+    //     const email = req.params.email;
+    //     if(email !== req.decoded.email ) {
+    //      return res.status(403).send({message: "uinauthorized access"})
+    //     }
+    //     const query = {email : email};
+    //     const user = await usersCollection.findOne(query);
+    //    let deliveryMan = false; 
+    //     if(user){
+    //         deliveryMan = user?.role === 'deliveryMan';
+    //     }
+    //     res.send({deliveryMan});
+    //   })
 
 
     app.post('/users', async(req, res) => {
@@ -63,33 +126,9 @@ async function run() {
         res.send(result);
       })
 
-      app.get('/users/admin/:email',   async(req, res) => {
-        const email = req.params.email;
-        if(email !== req.decoded.email ) {
-         return res.status(403).send({message: "uinauthorized access"})
-        }
-        const query = {email : email};
-        const user = await usersCollection.findOne(query);
-        const admin = false; 
-        if(user){
-          admin = user?.role === 'admin';
-        }
-        res.send({admin});
-      })
+      
 
-      app.get('/users/deliveryMan/:email',   async(req, res) => {
-        const email = req.params.email;
-        if(email !== req.decoded.email ) {
-         return res.status(403).send({message: "uinauthorized access"})
-        }
-        const query = {email : email};
-        const user = await usersCollection.findOne(query);
-        const deliveryMan = false; 
-        if(user){
-            deliveryMan = user?.role === 'deliveryMan';
-        }
-        res.send({deliveryMan});
-      })
+    
 
       app.get('/delivery-men', async (req, res) => {
         
@@ -318,6 +357,57 @@ app.patch('/order/admin/:id', async (req, res) => {
     //     ]).toArray();
     //     res.send(result);
     //   })
+
+    app.get('/order/total', async (req, res) => {
+        
+        const result = await orderCollection.aggregate([
+            {
+              $group: {
+                _id: null,
+                totalQuantity: { $sum: 1 }, // Assuming your order documents have a field named 'quantity'
+              },
+            },
+          ]).toArray();
+      
+         
+          res.send( result );
+    })
+
+    app.get('/users/total-users', async (req, res) => {
+        
+        const result = await usersCollection.aggregate([
+            {
+              $group: {
+                _id: null,
+                totalUsers: { $sum: 1 }, // Assuming your order documents have a field named 'quantity'
+              },
+            },
+          ]).toArray();
+      
+          
+          res.send( result );
+    })
+
+    app.get('/order/delivered-total', async (req, res) => {
+        
+        const result = await orderCollection.aggregate([
+            {
+              $match: {
+                status: 'Delivered',
+              },
+            },
+            {
+              $group: {
+                _id: null,
+                totalDelivered: { $sum: 1 },
+              },
+            },
+          ]).toArray();
+          res.send(result);
+       
+        
+      });
+      
 
     app.get('/users-stats', async (req, res) => {
         const result = await usersCollection.aggregate([
